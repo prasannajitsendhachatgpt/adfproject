@@ -1,0 +1,19 @@
+{
+	"name": "LS_AKV",
+	"properties": {
+		"parameters": {
+			"KV_Name": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"type": "AzureKeyVault",
+		"typeProperties": {
+			"baseUrl": "@{concat('https://',linkedService().KV_Name,'.vault.azure.net')}",
+			"credential": {
+				"referenceName": "UAMI_Secret",
+				"type": "CredentialReference"
+			}
+		}
+	}
+}
