@@ -53,6 +53,10 @@
 			},
 			"sslMode": 2,
 			"authenticationType": "Basic"
+		},
+		"connectVia": {
+			"referenceName": "SHIR",
+			"type": "IntegrationRuntimeReference"
 		}
 	}
 }
