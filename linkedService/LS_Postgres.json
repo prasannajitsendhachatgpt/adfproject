@@ -1,0 +1,58 @@
+{
+	"name": "LS_Postgres",
+	"properties": {
+		"parameters": {
+			"server": {
+				"type": "string",
+				"defaultValue": "34.100.223.97"
+			},
+			"port": {
+				"type": "string",
+				"defaultValue": "5432"
+			},
+			"database": {
+				"type": "string",
+				"defaultValue": "uipath_common"
+			},
+			"userName": {
+				"type": "string",
+				"defaultValue": "rpa"
+			},
+			"PWSecretName": {
+				"type": "string",
+				"defaultValue": "postgre-db-pw"
+			},
+			"AKVName": {
+				"type": "string",
+				"defaultValue": "kvpsproject"
+			}
+		},
+		"annotations": [],
+		"type": "PostgreSqlV2",
+		"typeProperties": {
+			"server": "@{linkedService().server}",
+			"port": "@{linkedService().port}",
+			"database": "@{linkedService().database}",
+			"username": "@{linkedService().userName}",
+			"password": {
+				"type": "AzureKeyVaultSecret",
+				"store": {
+					"referenceName": "LS_AKV",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"KV_Name": {
+							"value": "@linkedService().AKVName",
+							"type": "Expression"
+						}
+					}
+				},
+				"secretName": {
+					"value": "@linkedService().PWSecretName",
+					"type": "Expression"
+				}
+			},
+			"sslMode": 2,
+			"authenticationType": "Basic"
+		}
+	}
+}
