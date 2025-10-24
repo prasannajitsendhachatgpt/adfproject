@@ -1,0 +1,181 @@
+{
+	"name": "PL_MasterRawIngestion",
+	"properties": {
+		"activities": [
+			{
+				"name": "ReadConfig",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "JsonSource",
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"enablePartitionDiscovery": false
+						},
+						"formatSettings": {
+							"type": "JsonReadSettings"
+						}
+					},
+					"dataset": {
+						"referenceName": "DS_ADLSG2_Json",
+						"type": "DatasetReference",
+						"parameters": {
+							"storageAccountName": {
+								"value": "@pipeline().parameters.ConfigStorageAccount",
+								"type": "Expression"
+							},
+							"containerName": {
+								"value": "@pipeline().parameters.ConfigContainer",
+								"type": "Expression"
+							},
+							"fileDir": {
+								"value": "@pipeline().parameters.ConfigDir",
+								"type": "Expression"
+							},
+							"fileName": {
+								"value": "@pipeline().parameters.ConfigFile",
+								"type": "Expression"
+							}
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEachTable",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "ReadConfig",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('ReadConfig').output.value[0].PODBDetails",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"activities": [
+						{
+							"name": "Call_PLInvrementalRawIngestion",
+							"type": "ExecutePipeline",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "PL_IncrementalRawIngestion",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"Schema": {
+										"value": "@item().Schema",
+										"type": "Expression"
+									},
+									"Table": {
+										"value": "@item().Table",
+										"type": "Expression"
+									},
+									"StorageAccountName": {
+										"value": "@activity('ReadConfig').output.value[0].StorageAccountName",
+										"type": "Expression"
+									},
+									"WatermarkFIleDir": {
+										"value": "@activity('ReadConfig').output.value[0].WatermarkFIleDir",
+										"type": "Expression"
+									},
+									"WatermarkFileName": {
+										"value": "@activity('ReadConfig').output.value[0].WatermarkFileName",
+										"type": "Expression"
+									},
+									"DataContainer": {
+										"value": "@activity('ReadConfig').output.value[0].Container.Raw",
+										"type": "Expression"
+									},
+									"WatermarkColName": {
+										"value": "@item().WatermarkColName",
+										"type": "Expression"
+									},
+									"KVName": {
+										"value": "@activity('ReadConfig').output.value[0].KVName",
+										"type": "Expression"
+									},
+									"server": {
+										"value": "@activity('ReadConfig').output.value[0].PODBserver",
+										"type": "Expression"
+									},
+									"port": {
+										"value": "@activity('ReadConfig').output.value[0].PODBport",
+										"type": "Expression"
+									},
+									"DBName": {
+										"value": "@item().DB",
+										"type": "Expression"
+									},
+									"PWsecretName": {
+										"value": "@activity('ReadConfig').output.value[0].PODBPWsecretName",
+										"type": "Expression"
+									},
+									"user": {
+										"value": "@activity('ReadConfig').output.value[0].PODBUser",
+										"type": "Expression"
+									},
+									"BackfillWatermark": {
+										"value": "@item().BackfillWatermark",
+										"type": "Expression"
+									},
+									"WatermarkEmptyFileName": {
+										"value": "@activity('ReadConfig').output.value[0].WatermarkEmptyJsonName",
+										"type": "Expression"
+									},
+									"WatermarkContainer": {
+										"value": "@activity('ReadConfig').output.value[0].Container.Util",
+										"type": "Expression"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"ConfigStorageAccount": {
+				"type": "string",
+				"defaultValue": "storagepsproject1"
+			},
+			"ConfigContainer": {
+				"type": "string",
+				"defaultValue": "meta"
+			},
+			"ConfigDir": {
+				"type": "string",
+				"defaultValue": "config"
+			},
+			"ConfigFile": {
+				"type": "string",
+				"defaultValue": "Config.json"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-10-24T06:28:09Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

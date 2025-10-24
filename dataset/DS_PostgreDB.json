@@ -1,0 +1,59 @@
+{
+	"name": "DS_PostgreDB",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_PostgreDB",
+			"type": "LinkedServiceReference",
+			"parameters": {
+				"KVName": {
+					"value": "@dataset().KVName",
+					"type": "Expression"
+				},
+				"server": {
+					"value": "@dataset().server",
+					"type": "Expression"
+				},
+				"port": {
+					"value": "@dataset().port",
+					"type": "Expression"
+				},
+				"DBName": {
+					"value": "@dataset().DBName",
+					"type": "Expression"
+				},
+				"user": {
+					"value": "@dataset().user",
+					"type": "Expression"
+				},
+				"PWsecretName": {
+					"value": "@dataset().PWsecretName",
+					"type": "Expression"
+				}
+			}
+		},
+		"parameters": {
+			"KVName": {
+				"type": "string"
+			},
+			"server": {
+				"type": "string"
+			},
+			"port": {
+				"type": "string"
+			},
+			"DBName": {
+				"type": "string"
+			},
+			"user": {
+				"type": "string"
+			},
+			"PWsecretName": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"type": "PostgreSqlV2Table",
+		"schema": []
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

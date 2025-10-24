@@ -1,0 +1,13 @@
+{
+	"name": "psprojectadf",
+	"location": "eastus",
+	"identity": {
+		"type": "UserAssigned",
+		"userAssignedIdentities": {
+			"/subscriptions/b806f79a-4d36-4453-8323-391bf562721b/resourcegroups/RG-AzureDataEngineeringProject/providers/Microsoft.ManagedIdentity/userAssignedIdentities/UAMI": {
+				"clientId": "55d48941-7365-4d99-b75f-67cfb9d6957a",
+				"principalId": "1dce9298-a76c-4349-8212-22261993dc39"
+			}
+		}
+	}
+}

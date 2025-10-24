@@ -1,0 +1,57 @@
+{
+	"name": "LS_PostgreDB",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
+	"properties": {
+		"parameters": {
+			"KVName": {
+				"type": "string"
+			},
+			"server": {
+				"type": "string"
+			},
+			"port": {
+				"type": "string"
+			},
+			"DBName": {
+				"type": "string"
+			},
+			"user": {
+				"type": "string"
+			},
+			"PWsecretName": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"type": "PostgreSqlV2",
+		"typeProperties": {
+			"server": "@{linkedService().server}",
+			"port": "@{linkedService().port}",
+			"database": "@{linkedService().DBName}",
+			"username": "@{linkedService().user}",
+			"password": {
+				"type": "AzureKeyVaultSecret",
+				"store": {
+					"referenceName": "LS_AKV",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"KV_Name": {
+							"value": "@linkedService().KVName",
+							"type": "Expression"
+						}
+					}
+				},
+				"secretName": {
+					"value": "@linkedService().PWsecretName",
+					"type": "Expression"
+				}
+			},
+			"sslMode": 2,
+			"authenticationType": "Basic"
+		},
+		"connectVia": {
+			"referenceName": "SHIR",
+			"type": "IntegrationRuntimeReference"
+		}
+	}
+}
