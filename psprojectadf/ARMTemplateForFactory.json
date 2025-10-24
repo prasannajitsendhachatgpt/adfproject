@@ -1,0 +1,1084 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"type": "string",
+			"metadata": "Data Factory name",
+			"defaultValue": "psprojectadf"
+		},
+		"LS_ADLSG2_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "@{concat('https://',linkedService().storageAccountName,'.dfs.core.windows.net')}"
+		},
+		"LS_AKV_properties_typeProperties_baseUrl": {
+			"type": "string",
+			"defaultValue": "@{concat('https://',linkedService().KV_Name,'.vault.azure.net')}"
+		},
+		"LS_PostgreDB_properties_typeProperties_server": {
+			"type": "string",
+			"defaultValue": "@{linkedService().server}"
+		},
+		"LS_PostgreDB_properties_typeProperties_database": {
+			"type": "string",
+			"defaultValue": "@{linkedService().DBName}"
+		},
+		"LS_PostgreDB_properties_typeProperties_username": {
+			"type": "string",
+			"defaultValue": "@{linkedService().user}"
+		},
+		"LS_Postgres_properties_typeProperties_server": {
+			"type": "string",
+			"defaultValue": "@{linkedService().server}"
+		},
+		"LS_Postgres_properties_typeProperties_database": {
+			"type": "string",
+			"defaultValue": "@{linkedService().database}"
+		},
+		"LS_Postgres_properties_typeProperties_username": {
+			"type": "string",
+			"defaultValue": "@{linkedService().userName}"
+		}
+	},
+	"variables": {
+		"factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]"
+	},
+	"resources": [
+		{
+			"name": "[concat(parameters('factoryName'), '/PL_IncrementalRawIngestion')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "GetWatermark",
+						"type": "Lookup",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "JsonSource",
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false
+								},
+								"formatSettings": {
+									"type": "JsonReadSettings"
+								}
+							},
+							"dataset": {
+								"referenceName": "DS_ADLSG2_Json",
+								"type": "DatasetReference",
+								"parameters": {
+									"storageAccountName": {
+										"value": "@pipeline().parameters.StorageAccountName",
+										"type": "Expression"
+									},
+									"containerName": {
+										"value": "@pipeline().parameters.WatermarkContainer",
+										"type": "Expression"
+									},
+									"fileDir": {
+										"value": "@concat(pipeline().parameters.WatermarkFIleDir,'/',pipeline().parameters.Table)",
+										"type": "Expression"
+									},
+									"fileName": {
+										"value": "@pipeline().parameters.WatermarkFileName",
+										"type": "Expression"
+									}
+								}
+							},
+							"firstRowOnly": false
+						}
+					},
+					{
+						"name": "IngestRaw",
+						"type": "Copy",
+						"dependsOn": [
+							{
+								"activity": "GetWatermark",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							},
+							{
+								"activity": "Get PLStartDT",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "PostgreSqlV2Source",
+								"query": {
+									"value": "SELECT * FROM @{pipeline().parameters.Schema}.@{pipeline().parameters.Table} WHERE @{pipeline().parameters.WatermarkColName} > '@{if(empty(pipeline().parameters.BackfillWatermark),activity('GetWatermark').output.value[0].cdc,pipeline().parameters.BackfillWatermark)}'\n\n",
+									"type": "Expression"
+								},
+								"queryTimeout": "02:00:00"
+							},
+							"sink": {
+								"type": "JsonSink",
+								"storeSettings": {
+									"type": "AzureBlobFSWriteSettings"
+								},
+								"formatSettings": {
+									"type": "JsonWriteSettings"
+								}
+							},
+							"enableStaging": false
+						},
+						"inputs": [
+							{
+								"referenceName": "DS_PostgreDB",
+								"type": "DatasetReference",
+								"parameters": {
+									"KVName": {
+										"value": "@pipeline().parameters.KVName",
+										"type": "Expression"
+									},
+									"server": {
+										"value": "@pipeline().parameters.server",
+										"type": "Expression"
+									},
+									"port": {
+										"value": "@pipeline().parameters.port",
+										"type": "Expression"
+									},
+									"DBName": {
+										"value": "@pipeline().parameters.DBName",
+										"type": "Expression"
+									},
+									"user": {
+										"value": "@pipeline().parameters.user",
+										"type": "Expression"
+									},
+									"PWsecretName": {
+										"value": "@pipeline().parameters.PWsecretName",
+										"type": "Expression"
+									}
+								}
+							}
+						],
+						"outputs": [
+							{
+								"referenceName": "DS_ADLSG2_Json",
+								"type": "DatasetReference",
+								"parameters": {
+									"storageAccountName": {
+										"value": "@pipeline().parameters.StorageAccountName",
+										"type": "Expression"
+									},
+									"containerName": {
+										"value": "@pipeline().parameters.DataContainer",
+										"type": "Expression"
+									},
+									"fileDir": {
+										"value": "@pipeline().parameters.Table",
+										"type": "Expression"
+									},
+									"fileName": {
+										"value": "@concat(pipeline().parameters.Table,'_',variables('PLStartDT'))",
+										"type": "Expression"
+									}
+								}
+							}
+						]
+					},
+					{
+						"name": "IncrementalDataCondition",
+						"type": "IfCondition",
+						"dependsOn": [
+							{
+								"activity": "IngestRaw",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@greater(activity('IngestRaw').output.dataRead,0)",
+								"type": "Expression"
+							},
+							"ifFalseActivities": [
+								{
+									"name": "DeletEmptyCopyFile",
+									"type": "Delete",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"dataset": {
+											"referenceName": "DS_ADLSG2_Json",
+											"type": "DatasetReference",
+											"parameters": {
+												"storageAccountName": {
+													"value": "@pipeline().parameters.StorageAccountName",
+													"type": "Expression"
+												},
+												"containerName": {
+													"value": "@pipeline().parameters.DataContainer",
+													"type": "Expression"
+												},
+												"fileDir": {
+													"value": "@pipeline().parameters.Table",
+													"type": "Expression"
+												},
+												"fileName": {
+													"value": "@concat(pipeline().parameters.Table,'_',variables('PLStartDT'))",
+													"type": "Expression"
+												}
+											}
+										},
+										"enableLogging": false,
+										"storeSettings": {
+											"type": "AzureBlobFSReadSettings",
+											"recursive": false,
+											"enablePartitionDiscovery": false
+										}
+									}
+								}
+							],
+							"ifTrueActivities": [
+								{
+									"name": "GetLatestWatermark",
+									"type": "Lookup",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"source": {
+											"type": "PostgreSqlV2Source",
+											"query": {
+												"value": "SELECT MAX(@{pipeline().parameters.WatermarkColName}) AS latest_watermark FROM @{pipeline().parameters.Schema}.@{pipeline().parameters.Table}",
+												"type": "Expression"
+											},
+											"queryTimeout": "02:00:00"
+										},
+										"dataset": {
+											"referenceName": "DS_PostgreDB",
+											"type": "DatasetReference",
+											"parameters": {
+												"KVName": {
+													"value": "@pipeline().parameters.KVName",
+													"type": "Expression"
+												},
+												"server": {
+													"value": "@pipeline().parameters.server",
+													"type": "Expression"
+												},
+												"port": {
+													"value": "@pipeline().parameters.port",
+													"type": "Expression"
+												},
+												"DBName": {
+													"value": "@pipeline().parameters.DBName",
+													"type": "Expression"
+												},
+												"user": {
+													"value": "@pipeline().parameters.user",
+													"type": "Expression"
+												},
+												"PWsecretName": {
+													"value": "@pipeline().parameters.PWsecretName",
+													"type": "Expression"
+												}
+											}
+										},
+										"firstRowOnly": false
+									}
+								},
+								{
+									"name": "UpdateWaterMark",
+									"type": "Copy",
+									"dependsOn": [
+										{
+											"activity": "GetLatestWatermark",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"source": {
+											"type": "JsonSource",
+											"additionalColumns": [
+												{
+													"name": "cdc",
+													"value": {
+														"value": "@activity('GetLatestWatermark').output.value[0].latest_watermark",
+														"type": "Expression"
+													}
+												}
+											],
+											"storeSettings": {
+												"type": "AzureBlobFSReadSettings",
+												"recursive": false,
+												"enablePartitionDiscovery": false
+											},
+											"formatSettings": {
+												"type": "JsonReadSettings"
+											}
+										},
+										"sink": {
+											"type": "JsonSink",
+											"storeSettings": {
+												"type": "AzureBlobFSWriteSettings"
+											},
+											"formatSettings": {
+												"type": "JsonWriteSettings"
+											}
+										},
+										"enableStaging": false,
+										"translator": {
+											"type": "TabularTranslator",
+											"mappings": [
+												{
+													"source": {
+														"path": "$['cdc']"
+													},
+													"sink": {
+														"path": "cdc"
+													}
+												}
+											]
+										}
+									},
+									"inputs": [
+										{
+											"referenceName": "DS_ADLSG2_Json",
+											"type": "DatasetReference",
+											"parameters": {
+												"storageAccountName": {
+													"value": "@pipeline().parameters.StorageAccountName",
+													"type": "Expression"
+												},
+												"containerName": {
+													"value": "@pipeline().parameters.WatermarkContainer",
+													"type": "Expression"
+												},
+												"fileDir": {
+													"value": "@concat(pipeline().parameters.WatermarkFIleDir,'/',pipeline().parameters.Table)",
+													"type": "Expression"
+												},
+												"fileName": {
+													"value": "@pipeline().parameters.WatermarkEmptyFileName",
+													"type": "Expression"
+												}
+											}
+										}
+									],
+									"outputs": [
+										{
+											"referenceName": "DS_ADLSG2_Json",
+											"type": "DatasetReference",
+											"parameters": {
+												"storageAccountName": {
+													"value": "@pipeline().parameters.StorageAccountName",
+													"type": "Expression"
+												},
+												"containerName": {
+													"value": "@pipeline().parameters.WatermarkContainer",
+													"type": "Expression"
+												},
+												"fileDir": {
+													"value": "@concat(pipeline().parameters.WatermarkFIleDir,'/',pipeline().parameters.Table)",
+													"type": "Expression"
+												},
+												"fileName": {
+													"value": "@pipeline().parameters.WatermarkFileName",
+													"type": "Expression"
+												}
+											}
+										}
+									]
+								}
+							]
+						}
+					},
+					{
+						"name": "Get PLStartDT",
+						"type": "SetVariable",
+						"dependsOn": [],
+						"policy": {
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"variableName": "PLStartDT",
+							"value": {
+								"value": "@utcNow()",
+								"type": "Expression"
+							}
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"Schema": {
+						"type": "string"
+					},
+					"Table": {
+						"type": "string"
+					},
+					"StorageAccountName": {
+						"type": "string"
+					},
+					"WatermarkFIleDir": {
+						"type": "string"
+					},
+					"WatermarkFileName": {
+						"type": "string"
+					},
+					"DataContainer": {
+						"type": "string"
+					},
+					"WatermarkColName": {
+						"type": "string"
+					},
+					"KVName": {
+						"type": "string"
+					},
+					"server": {
+						"type": "string"
+					},
+					"port": {
+						"type": "string"
+					},
+					"DBName": {
+						"type": "string"
+					},
+					"PWsecretName": {
+						"type": "string"
+					},
+					"user": {
+						"type": "string"
+					},
+					"BackfillWatermark": {
+						"type": "string"
+					},
+					"WatermarkEmptyFileName": {
+						"type": "string"
+					},
+					"WatermarkContainer": {
+						"type": "string"
+					}
+				},
+				"variables": {
+					"PLStartDT": {
+						"type": "String"
+					}
+				},
+				"annotations": [],
+				"lastPublishTime": "2025-10-24T06:28:09Z"
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/DS_ADLSG2_Json')]",
+				"[concat(variables('factoryId'), '/datasets/DS_PostgreDB')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/PL_MasterRawIngestion')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "ReadConfig",
+						"type": "Lookup",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "JsonSource",
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false
+								},
+								"formatSettings": {
+									"type": "JsonReadSettings"
+								}
+							},
+							"dataset": {
+								"referenceName": "DS_ADLSG2_Json",
+								"type": "DatasetReference",
+								"parameters": {
+									"storageAccountName": {
+										"value": "@pipeline().parameters.ConfigStorageAccount",
+										"type": "Expression"
+									},
+									"containerName": {
+										"value": "@pipeline().parameters.ConfigContainer",
+										"type": "Expression"
+									},
+									"fileDir": {
+										"value": "@pipeline().parameters.ConfigDir",
+										"type": "Expression"
+									},
+									"fileName": {
+										"value": "@pipeline().parameters.ConfigFile",
+										"type": "Expression"
+									}
+								}
+							},
+							"firstRowOnly": false
+						}
+					},
+					{
+						"name": "ForEachTable",
+						"type": "ForEach",
+						"dependsOn": [
+							{
+								"activity": "ReadConfig",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"items": {
+								"value": "@activity('ReadConfig').output.value[0].PODBDetails",
+								"type": "Expression"
+							},
+							"isSequential": false,
+							"activities": [
+								{
+									"name": "Call_PLInvrementalRawIngestion",
+									"type": "ExecutePipeline",
+									"dependsOn": [],
+									"policy": {
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"pipeline": {
+											"referenceName": "PL_IncrementalRawIngestion",
+											"type": "PipelineReference"
+										},
+										"waitOnCompletion": true,
+										"parameters": {
+											"Schema": {
+												"value": "@item().Schema",
+												"type": "Expression"
+											},
+											"Table": {
+												"value": "@item().Table",
+												"type": "Expression"
+											},
+											"StorageAccountName": {
+												"value": "@activity('ReadConfig').output.value[0].StorageAccountName",
+												"type": "Expression"
+											},
+											"WatermarkFIleDir": {
+												"value": "@activity('ReadConfig').output.value[0].WatermarkFIleDir",
+												"type": "Expression"
+											},
+											"WatermarkFileName": {
+												"value": "@activity('ReadConfig').output.value[0].WatermarkFileName",
+												"type": "Expression"
+											},
+											"DataContainer": {
+												"value": "@activity('ReadConfig').output.value[0].Container.Raw",
+												"type": "Expression"
+											},
+											"WatermarkColName": {
+												"value": "@item().WatermarkColName",
+												"type": "Expression"
+											},
+											"KVName": {
+												"value": "@activity('ReadConfig').output.value[0].KVName",
+												"type": "Expression"
+											},
+											"server": {
+												"value": "@activity('ReadConfig').output.value[0].PODBserver",
+												"type": "Expression"
+											},
+											"port": {
+												"value": "@activity('ReadConfig').output.value[0].PODBport",
+												"type": "Expression"
+											},
+											"DBName": {
+												"value": "@item().DB",
+												"type": "Expression"
+											},
+											"PWsecretName": {
+												"value": "@activity('ReadConfig').output.value[0].PODBPWsecretName",
+												"type": "Expression"
+											},
+											"user": {
+												"value": "@activity('ReadConfig').output.value[0].PODBUser",
+												"type": "Expression"
+											},
+											"BackfillWatermark": {
+												"value": "@item().BackfillWatermark",
+												"type": "Expression"
+											},
+											"WatermarkEmptyFileName": {
+												"value": "@activity('ReadConfig').output.value[0].WatermarkEmptyJsonName",
+												"type": "Expression"
+											},
+											"WatermarkContainer": {
+												"value": "@activity('ReadConfig').output.value[0].Container.Util",
+												"type": "Expression"
+											}
+										}
+									}
+								}
+							]
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"ConfigStorageAccount": {
+						"type": "string",
+						"defaultValue": "storagepsproject1"
+					},
+					"ConfigContainer": {
+						"type": "string",
+						"defaultValue": "meta"
+					},
+					"ConfigDir": {
+						"type": "string",
+						"defaultValue": "config"
+					},
+					"ConfigFile": {
+						"type": "string",
+						"defaultValue": "Config.json"
+					}
+				},
+				"annotations": [],
+				"lastPublishTime": "2025-10-24T06:28:09Z"
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/DS_ADLSG2_Json')]",
+				"[concat(variables('factoryId'), '/pipelines/PL_IncrementalRawIngestion')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/DS_ADLSG2_Json')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "LS_ADLSG2",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"storageAccountName": {
+							"value": "@dataset().storageAccountName",
+							"type": "Expression"
+						}
+					}
+				},
+				"parameters": {
+					"storageAccountName": {
+						"type": "string"
+					},
+					"containerName": {
+						"type": "string"
+					},
+					"fileDir": {
+						"type": "string"
+					},
+					"fileName": {
+						"type": "string"
+					}
+				},
+				"annotations": [],
+				"type": "Json",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobFSLocation",
+						"fileName": {
+							"value": "@dataset().fileName",
+							"type": "Expression"
+						},
+						"folderPath": {
+							"value": "@dataset().fileDir",
+							"type": "Expression"
+						},
+						"fileSystem": {
+							"value": "@dataset().containerName",
+							"type": "Expression"
+						}
+					}
+				},
+				"schema": {}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/LS_ADLSG2')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/DS_ADLSG2_Parquet')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "LS_ADLSG2",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"storageAccountName": {
+							"value": "@dataset().storageAccountName",
+							"type": "Expression"
+						}
+					}
+				},
+				"parameters": {
+					"storageAccountName": {
+						"type": "string"
+					},
+					"container": {
+						"type": "string"
+					},
+					"fileDir": {
+						"type": "string"
+					},
+					"fileName": {
+						"type": "string"
+					}
+				},
+				"annotations": [],
+				"type": "Parquet",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobFSLocation",
+						"fileName": {
+							"value": "@dataset().fileName",
+							"type": "Expression"
+						},
+						"folderPath": {
+							"value": "@dataset().fileDir",
+							"type": "Expression"
+						},
+						"fileSystem": {
+							"value": "@dataset().container",
+							"type": "Expression"
+						}
+					},
+					"compressionCodec": "snappy"
+				},
+				"schema": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/LS_ADLSG2')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/DS_PostgreDB')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "LS_PostgreDB",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"KVName": {
+							"value": "@dataset().KVName",
+							"type": "Expression"
+						},
+						"server": {
+							"value": "@dataset().server",
+							"type": "Expression"
+						},
+						"port": {
+							"value": "@dataset().port",
+							"type": "Expression"
+						},
+						"DBName": {
+							"value": "@dataset().DBName",
+							"type": "Expression"
+						},
+						"user": {
+							"value": "@dataset().user",
+							"type": "Expression"
+						},
+						"PWsecretName": {
+							"value": "@dataset().PWsecretName",
+							"type": "Expression"
+						}
+					}
+				},
+				"parameters": {
+					"KVName": {
+						"type": "string"
+					},
+					"server": {
+						"type": "string"
+					},
+					"port": {
+						"type": "string"
+					},
+					"DBName": {
+						"type": "string"
+					},
+					"user": {
+						"type": "string"
+					},
+					"PWsecretName": {
+						"type": "string"
+					}
+				},
+				"annotations": [],
+				"type": "PostgreSqlV2Table",
+				"schema": [],
+				"typeProperties": {}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/LS_PostgreDB')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/LS_ADLSG2')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"parameters": {
+					"storageAccountName": {
+						"type": "string"
+					}
+				},
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('LS_ADLSG2_properties_typeProperties_url')]",
+					"credential": {
+						"referenceName": "UAMI",
+						"type": "CredentialReference"
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/credentials/UAMI')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/LS_AKV')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"parameters": {
+					"KV_Name": {
+						"type": "string"
+					}
+				},
+				"annotations": [],
+				"type": "AzureKeyVault",
+				"typeProperties": {
+					"baseUrl": "[parameters('LS_AKV_properties_typeProperties_baseUrl')]",
+					"credential": {
+						"referenceName": "UAMI",
+						"type": "CredentialReference"
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/credentials/UAMI')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/LS_PostgreDB')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"parameters": {
+					"KVName": {
+						"type": "string"
+					},
+					"server": {
+						"type": "string"
+					},
+					"port": {
+						"type": "string"
+					},
+					"DBName": {
+						"type": "string"
+					},
+					"user": {
+						"type": "string"
+					},
+					"PWsecretName": {
+						"type": "string"
+					}
+				},
+				"annotations": [],
+				"type": "PostgreSqlV2",
+				"typeProperties": {
+					"server": "[parameters('LS_PostgreDB_properties_typeProperties_server')]",
+					"port": "@{linkedService().port}",
+					"database": "[parameters('LS_PostgreDB_properties_typeProperties_database')]",
+					"username": "[parameters('LS_PostgreDB_properties_typeProperties_username')]",
+					"password": {
+						"type": "AzureKeyVaultSecret",
+						"store": {
+							"referenceName": "LS_AKV",
+							"type": "LinkedServiceReference",
+							"parameters": {
+								"KV_Name": {
+									"value": "@linkedService().KVName",
+									"type": "Expression"
+								}
+							}
+						},
+						"secretName": {
+							"value": "@linkedService().PWsecretName",
+							"type": "Expression"
+						}
+					},
+					"sslMode": 2,
+					"authenticationType": "Basic"
+				},
+				"connectVia": {
+					"referenceName": "SHIR",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/integrationRuntimes/SHIR')]",
+				"[concat(variables('factoryId'), '/linkedServices/LS_AKV')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/LS_Postgres')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"parameters": {
+					"server": {
+						"type": "string",
+						"defaultValue": "34.100.223.97"
+					},
+					"port": {
+						"type": "string",
+						"defaultValue": "5432"
+					},
+					"database": {
+						"type": "string",
+						"defaultValue": "uipath_common"
+					},
+					"userName": {
+						"type": "string",
+						"defaultValue": "rpa"
+					},
+					"PWSecretName": {
+						"type": "string",
+						"defaultValue": "postgre-db-pw"
+					},
+					"AKVName": {
+						"type": "string",
+						"defaultValue": "kvpsproject"
+					}
+				},
+				"annotations": [],
+				"type": "PostgreSqlV2",
+				"typeProperties": {
+					"server": "[parameters('LS_Postgres_properties_typeProperties_server')]",
+					"port": "@{linkedService().port}",
+					"database": "[parameters('LS_Postgres_properties_typeProperties_database')]",
+					"username": "[parameters('LS_Postgres_properties_typeProperties_username')]",
+					"password": {
+						"type": "AzureKeyVaultSecret",
+						"store": {
+							"referenceName": "LS_AKV",
+							"type": "LinkedServiceReference",
+							"parameters": {
+								"KV_Name": {
+									"value": "@linkedService().AKVName",
+									"type": "Expression"
+								}
+							}
+						},
+						"secretName": {
+							"value": "@linkedService().PWSecretName",
+							"type": "Expression"
+						}
+					},
+					"sslMode": 2,
+					"authenticationType": "Basic"
+				},
+				"connectVia": {
+					"referenceName": "SHIR",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/integrationRuntimes/SHIR')]",
+				"[concat(variables('factoryId'), '/linkedServices/LS_AKV')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/SHIR')]",
+			"type": "Microsoft.DataFactory/factories/integrationRuntimes",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"type": "SelfHosted",
+				"typeProperties": {}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/UAMI')]",
+			"type": "Microsoft.DataFactory/factories/credentials",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"type": "ManagedIdentity",
+				"typeProperties": {
+					"resourceId": "/subscriptions/b806f79a-4d36-4453-8323-391bf562721b/resourcegroups/RG-AzureDataEngineeringProject/providers/Microsoft.ManagedIdentity/userAssignedIdentities/UAMI"
+				}
+			},
+			"dependsOn": []
+		}
+	]
+}
