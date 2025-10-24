@@ -1,16 +1,16 @@
 {
-	"name": "LS_AKV",
+	"name": "LS_ADLSG2",
 	"type": "Microsoft.DataFactory/factories/linkedservices",
 	"properties": {
 		"parameters": {
-			"KV_Name": {
+			"storageAccountName": {
 				"type": "string"
 			}
 		},
 		"annotations": [],
-		"type": "AzureKeyVault",
+		"type": "AzureBlobFS",
 		"typeProperties": {
-			"baseUrl": "@{concat('https://',linkedService().KV_Name,'.vault.azure.net')}",
+			"url": "@{concat('https://',linkedService().storageAccountName,'.dfs.core.windows.net')}",
 			"credential": {
 				"referenceName": "UAMI",
 				"type": "CredentialReference"
