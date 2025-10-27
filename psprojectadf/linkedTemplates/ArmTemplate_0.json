@@ -26,18 +26,6 @@
 		"LS_PostgreDB_properties_typeProperties_username": {
 			"type": "string",
 			"defaultValue": "@{linkedService().user}"
-		},
-		"LS_Postgres_properties_typeProperties_server": {
-			"type": "string",
-			"defaultValue": "@{linkedService().server}"
-		},
-		"LS_Postgres_properties_typeProperties_database": {
-			"type": "string",
-			"defaultValue": "@{linkedService().database}"
-		},
-		"LS_Postgres_properties_typeProperties_username": {
-			"type": "string",
-			"defaultValue": "@{linkedService().userName}"
 		}
 	},
 	"variables": {
@@ -269,74 +257,6 @@
 						},
 						"secretName": {
 							"value": "@linkedService().PWsecretName",
-							"type": "Expression"
-						}
-					},
-					"sslMode": 2,
-					"authenticationType": "Basic"
-				},
-				"connectVia": {
-					"referenceName": "SHIR",
-					"type": "IntegrationRuntimeReference"
-				}
-			},
-			"dependsOn": [
-				"[concat(variables('factoryId'), '/integrationRuntimes/SHIR')]",
-				"[concat(variables('factoryId'), '/linkedServices/LS_AKV')]"
-			]
-		},
-		{
-			"name": "[concat(parameters('factoryName'), '/LS_Postgres')]",
-			"type": "Microsoft.DataFactory/factories/linkedServices",
-			"apiVersion": "2018-06-01",
-			"properties": {
-				"parameters": {
-					"server": {
-						"type": "string",
-						"defaultValue": "34.100.223.97"
-					},
-					"port": {
-						"type": "string",
-						"defaultValue": "5432"
-					},
-					"database": {
-						"type": "string",
-						"defaultValue": "uipath_common"
-					},
-					"userName": {
-						"type": "string",
-						"defaultValue": "rpa"
-					},
-					"PWSecretName": {
-						"type": "string",
-						"defaultValue": "postgre-db-pw"
-					},
-					"AKVName": {
-						"type": "string",
-						"defaultValue": "kvpsproject"
-					}
-				},
-				"annotations": [],
-				"type": "PostgreSqlV2",
-				"typeProperties": {
-					"server": "[parameters('LS_Postgres_properties_typeProperties_server')]",
-					"port": "@{linkedService().port}",
-					"database": "[parameters('LS_Postgres_properties_typeProperties_database')]",
-					"username": "[parameters('LS_Postgres_properties_typeProperties_username')]",
-					"password": {
-						"type": "AzureKeyVaultSecret",
-						"store": {
-							"referenceName": "LS_AKV",
-							"type": "LinkedServiceReference",
-							"parameters": {
-								"KV_Name": {
-									"value": "@linkedService().AKVName",
-									"type": "Expression"
-								}
-							}
-						},
-						"secretName": {
-							"value": "@linkedService().PWSecretName",
 							"type": "Expression"
 						}
 					},

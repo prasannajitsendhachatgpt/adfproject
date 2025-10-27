@@ -20,15 +20,6 @@
 		"LS_PostgreDB_properties_typeProperties_username": {
 			"value": "@{linkedService().user}"
 		},
-		"LS_Postgres_properties_typeProperties_server": {
-			"value": "@{linkedService().server}"
-		},
-		"LS_Postgres_properties_typeProperties_database": {
-			"value": "@{linkedService().database}"
-		},
-		"LS_Postgres_properties_typeProperties_username": {
-			"value": "@{linkedService().userName}"
-		},
 		"containerUri": {
 			"value": ""
 		},
